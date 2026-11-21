@@ -7,7 +7,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from croptime import crop_model, data_fetch, indicators, soil
+from cropmaxxing import crop_model, data_fetch, indicators, soil
 
 st.set_page_config(
     page_title="CROPMAXXING",
@@ -551,13 +551,13 @@ d1, d2 = st.columns(2)
 d1.download_button(
     "⬇ Indicators CSV",
     table.to_csv().encode("utf-8"),
-    file_name=f"croptime_indicators_{lat:.2f}_{lon:.2f}.csv",
+    file_name=f"CropMaxxing_indicators_{lat:.2f}_{lon:.2f}.csv",
     mime="text/csv", use_container_width=True,
 )
 d2.download_button(
     "⬇ Crop ranking CSV",
     ranking.to_csv(index=False).encode("utf-8"),
-    file_name=f"croptime_ranking_{lat:.2f}_{lon:.2f}.csv",
+    file_name=f"cropmaxxing_ranking_{lat:.2f}_{lon:.2f}.csv",
     mime="text/csv", use_container_width=True,
 )
 
@@ -574,7 +574,7 @@ st.markdown('## ℹ About — data, method and limitations')
 st.markdown(
     """
 
-**What it does.** CropTime reads a satellite-derived climate record for one
+**What it does.** CropMaxxing reads a satellite-derived climate record for one
 point, measures how the season actually behaved each year, and ranks crops by
 *reliability* — not just average yield. It then flags the current season if it
 is diverging from the norm.
