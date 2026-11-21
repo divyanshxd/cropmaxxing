@@ -1,0 +1,31 @@
+# CropMaxxing — light theme, locked.
+#
+# The UI is designed for a white surface: light panels, dark ink, and charts
+# whose backgrounds are transparent over the page. Pinning `base = "light"`
+# means it renders that way for every viewer, whatever their OS or Streamlit
+# theme preference. app.py mirrors these values (force_light_theme) so running
+# `python app.py` directly gets the same look.
+
+[theme]
+base = "light"
+primaryColor = "#2E7D32"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F9FC"
+textColor = "#16202E"
+linkColor = "#2E7D32"
+borderColor = "#CBD3E1"
+dataframeBorderColor = "#CBD3E1"
+dataframeHeaderBackgroundColor = "#F7F9FC"
+dataframeHeaderTextColor = "#16202E"
+showWidgetBorder = true
+baseRadius = "0.6rem"
+
+[client]
+toolbarMode = "minimal"
+showErrorDetails = false
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

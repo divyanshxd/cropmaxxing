@@ -1,4 +1,6 @@
+
 from __future__ import annotations
+import importlib
 import os
 import sys
 import pandas as pd
@@ -7,7 +9,76 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from cropmaxxing import crop_model, data_fetch, indicators, soil
+# ----------------------------------------------------------------------------
+# Engine import path. The engine is imported as `croptime`, but the folder
+# holding it is not always called that (this checkout ships `cropmaxxing/`).
+# Register whichever package folder actually has the modules under that name.
+# ----------------------------------------------------------------------------
+def _ensure_engine_importable() -> None:
+    engine_modules = ("crop_model", "data_fetch", "indicators", "soil")
+    root = os.path.dirname(os.path.abspath(__file__))
+    for pkg_dir in ("croptime", "cropmaxxing"):
+        path = os.path.join(root, pkg_dir)
+        if os.path.isdir(path) and all(
+                os.path.exists(os.path.join(path, f"{m}.py"))
+                for m in engine_modules):
+            if "croptime" not in sys.modules:
+                sys.modules["croptime"] = importlib.import_module(pkg_dir)
+            if root not in sys.path:
+                sys.path.insert(0, root)
+            return
+
+
+_ensure_engine_importable()
+
+# ----------------------------------------------------------------------------
+# Light-mode lock -- must run before set_page_config().
+#
+# The whole palette below assumes a white page. Without an explicit base,
+# Streamlit follows the *viewer's* theme, so a dark-mode browser paints dark
+# chrome under white-background charts. Base "light" makes it resolve every
+# theme.light.* value (all pinned in .streamlit/config.toml and mirrored
+# here) whatever the user's OS is set to.
+#
+# `streamlit run` reads the config file itself and raises on set_option, so
+# this is skipped there (config.toml already does the job) and only applies
+# when app.py is started directly with plain `python app.py`.
+# ----------------------------------------------------------------------------
+def force_light_theme() -> None:
+    try:
+        from streamlit import config as config_module
+        from streamlit import runtime
+
+        if runtime.exists():  # launched via `streamlit run`
+            return
+    except Exception:
+        pass
+
+    theme = {
+        "base": "light",
+        "primaryColor": "#2E7D32",
+        "backgroundColor": "#FFFFFF",
+        "secondaryBackgroundColor": "#F7F9FC",
+        "textColor": "#16202E",
+        "linkColor": "#2E7D32",
+        "borderColor": "#CBD3E1",
+        "dataframeBorderColor": "#CBD3E1",
+        "dataframeHeaderBackgroundColor": "#F7F9FC",
+        "showWidgetBorder": True,
+        "baseRadius": "0.6rem",
+    }
+    for key, value in theme.items():
+        try:
+            config_module.set_option(f"theme.{key}", value)
+        except Exception:
+            # Older Streamlit releases lack some options -- the CSS below is
+            # the fallback, never a crash.
+            pass
+
+
+force_light_theme()
+
+from croptime import crop_model, data_fetch, indicators, soil
 
 st.set_page_config(
     page_title="CROPMAXXING",
@@ -16,21 +87,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Palettes
-ACCENT = "#2E7D32"
-HEAT = "#C2410C"
-GOLD = "#B7791F"
-BG = "#FFFFFF"
-PANEL = "#F4F6FB"
-INK = "#1A2233"
-MUTED = "#5A6478"
-LINE = "#D6DCE9"
-GRID = "#E6EAF2"
-BARMUTE = "#A7B3CC"
+# Palettes — tuned for a light / white background
+ACCENT = "#2E7D32"      # vegetation green
+HEAT = "#C2410C"        # heat orange
+GOLD = "#8A5A00"        # threshold lines/annotations: darker for white bg
+BG = "#FFFFFF"          # page background
+PANEL = "#F7F9FC"       # card / panel fill
+INK = "#16202E"         # primary text
+MUTED = "#4E596B"       # secondary text
+LINE = "#CBD3E1"        # borders
+GRID = "#E9EDF4"        # chart gridlines
+BARMUTE = "#7C8AA5"     # de-emphasised bars (darker for contrast on white)
+SOFT = "#EEF3EA"        # tinted fill (button hover, selected option)
+GREEN = "#1B5E20"       # success badge text on GREEN_BG
+GREEN_BG = "#E8F5E9"
+AMBER = "#7A4A00"       # provisional badge text on AMBER_BG
+AMBER_BG = "#FFF4E5"
+BLUE = "#0B4F8A"        # info badge text on BLUE_BG
+BLUE_BG = "#E8F1FB"
 
 st.markdown(
     f"""
     <style>
+    /* Keep native scrollbars, form controls and inputs light. */
+    :root {{ color-scheme: light; }}
     .stApp {{ background-color: {BG}; }}
     h1, h2, h3, h4 {{ color: {INK}; }}
     .ct-hero {{
@@ -51,6 +131,136 @@ st.markdown(
     .ct-small {{ color: {MUTED}; font-size: 0.85rem; }}
     div[data-testid="stMetricValue"] {{ color: {INK}; }}
     div[data-testid="stMetricLabel"] {{ color: {MUTED}; }}
+
+    /* ---- Light-mode polish ---------------------------------------------- */
+
+    /* The palette above is fixed to a light surface. If the browser reports a
+       dark preference, refuse to let it repaint form controls and text. */
+    @media (prefers-color-scheme: dark) {{
+        .stApp {{ background-color: {BG} !important; color: {INK} !important; }}
+    }}
+    .stApp, .stApp * {{ forced-color-adjust: none; }}
+
+    /* Sidebar stays light even when the browser is in dark mode. */
+    section[data-testid="stSidebar"],
+    div[data-testid="stSidebarContent"] {{
+        background-color: {PANEL} !important; color: {INK} !important;
+    }}
+    section[data-testid="stSidebar"] * {{ color: {INK}; }}
+
+    /* Plotly's hover modebar renders as a dark grey block; make it light. */
+    .modebar {{ background: transparent !important; }}
+    .modebar-group {{ background: {PANEL} !important; }}
+    .modebar-btn path {{ fill: {MUTED} !important; }}
+    .modebar-btn:hover path {{ fill: {ACCENT} !important; }}
+    .modebar-btn:hover {{ background: {GRID} !important; }}
+
+    /* Text inside charts and tables should always be dark on white. */
+    .js-plotly-plot .plotly text {{ fill: {INK}; }}
+    .js-plotly-plot .plotly .gtitle,
+    .js-plotly-plot .plotly .xtitle,
+    .js-plotly-plot .plotly .ytitle {{ fill: {INK} !important; }}
+    .js-plotly-plot .plotly .modebar-btn path {{ fill: {MUTED} !important; }}
+
+    /* Cards and alerts: white/very light with a clear border. */
+    div[data-testid="stAlert"] {{ border-radius: 8px; color: {INK}; }}
+    div[data-testid="stAlert"] p {{ color: {INK} !important; }}
+    div[data-testid="stExpander"] {{
+        border: 1px solid {LINE} !important; border-radius: 8px;
+        background: {PANEL};
+    }}
+    div[data-testid="stExpander"] summary {{ color: {INK} !important; }}
+    details summary:hover {{ color: {ACCENT} !important; }}
+
+    /* Native widgets: neutral white fill, dark text, visible borders. */
+    div[data-baseweb="select"] > div {{
+        background: {BG} !important; color: {INK} !important;
+        border-color: {LINE} !important;
+    }}
+    div[data-baseweb="select"] svg {{ fill: {MUTED} !important; }}
+    div[data-baseweb="popover"] li {{ color: {INK} !important; }}
+    ul[role="listbox"], div[data-baseweb="menu"] {{
+        background: {BG} !important; border: 1px solid {LINE} !important;
+    }}
+    li[role="option"] {{ color: {INK} !important; }}
+    li[role="option"]:hover, li[aria-selected="true"] {{
+        background: {SOFT} !important; color: {INK} !important;
+    }}
+    div[data-testid="stNumberInput"] input,
+    div[data-testid="stTextInput"] input {{
+        background: {BG} !important; color: {INK} !important;
+    }}
+    div[data-testid="stNumberInput"] button {{
+        background: {PANEL} !important; color: {INK} !important;
+        border-color: {LINE} !important;
+    }}
+    div[data-testid="stNumberInput"] button svg {{ fill: {MUTED} !important; }}
+
+    /* Widget labels only, so custom card/flag colours keep their own ink. */
+    div[data-testid="stRadio"] label,
+    div[data-testid="stCheckbox"] label,
+    div[data-testid="stWidgetLabel"] p {{ color: {INK}; }}
+    div[data-testid="stCaptionContainer"] p {{ color: {MUTED} !important; }}
+    div[data-baseweb="slider"] div[role="slider"] {{ background: {ACCENT} !important; }}
+
+    /* Buttons: solid primary, white secondary, dark label on both. */
+    .stButton button, .stDownloadButton button {{ border-radius: 8px; }}
+    .stButton button[kind="primary"] {{
+        background: {ACCENT} !important; color: {BG} !important;
+        border: 1px solid {ACCENT} !important;
+    }}
+    .stButton button[kind="primary"]:hover {{
+        background: {GREEN} !important; border-color: {GREEN} !important;
+    }}
+    .stButton button[kind="secondary"],
+    .stDownloadButton button {{
+        background: {BG} !important; color: {INK} !important;
+        border: 1px solid {LINE} !important;
+    }}
+    .stButton button[kind="secondary"]:hover,
+    .stDownloadButton button:hover {{
+        border-color: {ACCENT} !important; color: {ACCENT} !important;
+        background: {SOFT} !important;
+    }}
+
+    /* Containers with border: light panel, not a dark outline. */
+    div[data-testid="stVerticalBlockBorderWrapper"] > div {{
+        border-color: {LINE} !important; border-radius: 12px;
+    }}
+    div[data-testid="stVerticalBlockBorderWrapper"] > div:first-child {{
+        background: {PANEL};
+    }}
+
+    /* Tooltips are the one dark element: an ink chip reads clearly on white. */
+    div[data-baseweb="tooltip"] {{
+        background: {INK} !important; color: {BG} !important;
+    }}
+    div[data-baseweb="tooltip"] * {{ color: {BG} !important; }}
+    pre, code, div[data-testid="stCode"] {{
+        background: {PANEL} !important; color: {INK} !important;
+        border: 1px solid {LINE} !important;
+    }}
+    hr {{ border-color: {LINE} !important; }}
+    a, a:visited {{ color: {ACCENT}; }}
+
+    /* Markdown tables were transparent before, so they took the viewer's
+       theme background. */
+    div[data-testid="stMarkdownContainer"] table {{
+        background: {BG}; border-collapse: collapse;
+    }}
+    div[data-testid="stMarkdownContainer"] th,
+    div[data-testid="stMarkdownContainer"] td {{
+        border-color: {LINE} !important; padding: 6px 10px;
+        color: {INK};
+    }}
+    div[data-testid="stMarkdownContainer"] th {{ background: {PANEL}; }}
+
+    /* Metric chrome: never inherit a dark default. */
+    div[data-testid="stMetricValue"] {{ color: {INK} !important; }}
+    div[data-testid="stMetricLabel"] {{ color: {MUTED} !important; }}
+
+    /* Dataframe header stays readable. */
+    div[data-testid="stDataFrame"] {{ border: 1px solid {LINE}; border-radius: 8px; }}
 
     /* Hide the Streamlit toolbar, the Deploy button and the "⋮" main menu.
        config.toml already sets toolbarMode="minimal"; this is a belt-and-
@@ -100,6 +310,11 @@ def style_chart(fig, **layout):
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=INK),
         title_font=dict(color=INK),
+        # Force light chrome on the live chart: a dark-mode viewer must not get
+        # a light plot box with a dark modebar and a dark hover label.
+        modebar=dict(bgcolor="rgba(0,0,0,0)", color=MUTED,
+                     activecolor=ACCENT),
+        hoverlabel=dict(bgcolor=BG, bordercolor=LINE, font=dict(color=INK)),
         **layout,
     )
 
@@ -107,15 +322,22 @@ def style_chart(fig, **layout):
                      title_font=dict(color=MUTED), zerolinecolor=LINE)
     fig.update_yaxes(gridcolor=GRID, linecolor=LINE, tickfont=dict(color=MUTED),
                      title_font=dict(color=MUTED), zerolinecolor=LINE)
+
+    # Threshold annotations are HTML drawn over the plot; without a solid light
+    # fill a dark theme leaves dark ink on a dark card.
+    for annotation in fig.layout.annotations or ():
+        if getattr(annotation, "bgcolor", None) and annotation.showarrow is not True:
+            annotation.update(bgcolor=BG, font=dict(color=INK))
+
     return fig
 
 PRESETS = {
-    "Bhopal, Madhya Pradesh (central plateau)": (23.26, 77.41),
-    "Nandurbar, Maharashtra (rain-fed cotton/tur belt)": (21.37, 74.24),
-    "Anantapur, Andhra Pradesh (semi-arid, drought-prone)": (14.68, 77.60),
-    "Ludhiana, Punjab (high-rainfall north)": (30.90, 75.85),
-    "Nagpur, Maharashtra (Vidarbha cotton belt)": (21.15, 79.09),
-    "Jodhpur, Rajasthan (arid)": (26.24, 73.02),
+    "Bhopal, Madhya Pradesh": (23.26, 77.41),
+    "Nandurbar, Maharashtra": (21.37, 74.24),
+    "Anantapur, Andhra Pradesh": (14.68, 77.60),
+    "Ludhiana, Punjab": (30.90, 75.85),
+    "Nagpur, Maharashtra": (21.15, 79.09),
+    "Jodhpur, Rajasthan": (26.24, 73.02),
     "Bundelkhand - Jhansi, Uttar Pradesh": (25.45, 78.57),
     "Marathwada - Parbhani, Maharashtra": (19.27, 76.77),
 }
@@ -203,7 +425,7 @@ try:
     with st.spinner("Fetching satellite-derived records"):
         df = load_site(lat, lon, start, end)
 except Exception as exc:
-    st.error(f"Can't run this shit {exc}")
+    st.error(f"Could not fetch climate data for this point: {exc}")
     st.stop()
 
 ind = indicators.build_indicator_table(df)
@@ -232,21 +454,32 @@ if fresh["latest"] is not None:
     cy = fresh["current_year"]
     cy_in_record = cy in ind.index
     if fresh["monsoon_complete"] and cy_in_record:
-        st.success(
-            f"**Data current to {fresh['latest_str']}** — {fresh['current_year_days']} "
-            f"days of {cy} loaded, and the {cy} monsoon window (Jun–Sep) is complete, "
-            f"so this season's indicators are final.",
-            icon="🛰",
+        st.markdown(
+            f"<div class='ct-card' style='border-left:6px solid {ACCENT};"
+            f"background:{GREEN_BG};'>"
+            f"🛰 <b style='color:{GREEN}'>Data current to {fresh['latest_str']}</b>"
+            f"<span style='color:{INK}'> — {fresh['current_year_days']} days of {cy} "
+            f"loaded, and the {cy} monsoon window (Jun–Sep) is complete, so this "
+            f"season's indicators are final.</span></div>",
+            unsafe_allow_html=True,
         )
     elif cy_in_record:
-        st.warning(
-            f"**Data current to {fresh['latest_str']}** — {cy} monsoon window is "
-            f"**not yet complete**, so the {cy} season is shown as provisional.",
-            icon="🛰",
+        st.markdown(
+            f"<div class='ct-card' style='border-left:6px solid {HEAT};"
+            f"background:{AMBER_BG};'>"
+            f"🛰 <b style='color:{AMBER}'>Data current to {fresh['latest_str']}</b>"
+            f"<span style='color:{INK}'> — {cy} monsoon window is <b>not yet "
+            f"complete</b>, so the {cy} season is shown as provisional.</span></div>",
+            unsafe_allow_html=True,
         )
     else:
-        st.info(f"**Data current to {fresh['latest_str']}** — no {cy} season in "
-                f"this window.", icon="🛰")
+        st.markdown(
+            f"<div class='ct-card' style='border-left:6px solid {BLUE};"
+            f"background:{BLUE_BG};'>"
+            f"🛰 <b style='color:{BLUE}'>Data current to {fresh['latest_str']}</b>"
+            f"<span style='color:{INK}'> — no {cy} season in this window.</span></div>",
+            unsafe_allow_html=True,
+        )
 
 # -------------------------------------------------------------------------
 
@@ -266,6 +499,9 @@ k4.metric("Top crop", top["crop"].split(" (")[0],
           f"{top['rank_score']:.0f} decision score")
 
 st.markdown("---")
+
+
+
 # -------------------------------------------------------------------------
 
 
@@ -382,10 +618,13 @@ heat_fig = go.Figure(data=go.Heatmap(
     colorscale=[[0, HEAT], [0.55, GOLD], [1, ACCENT]],
     zmin=0, zmax=100,
     colorbar=dict(title="Score", tickfont=dict(color=MUTED),
-                  title_font=dict(color=MUTED), outlinecolor=LINE),
+                  title_font=dict(color=MUTED), outlinecolor=LINE,
+                  bordercolor=LINE, bgcolor=BG),
     hovertemplate="%{y}<br>%{x}: %{z:.0f}<extra></extra>",
 ))
-style_chart(heat_fig, height=380, margin=dict(l=10, r=10, t=20, b=10))
+style_chart(heat_fig, height=380, margin=dict(l=10, r=10, t=20, b=10),
+            xaxis=dict(side="bottom", tickfont=dict(color=MUTED)),
+            yaxis=dict(tickfont=dict(color=INK)))
 st.plotly_chart(heat_fig, use_container_width=True)
 # --- Factor breakdown: exactly what drove the 2026 recommendation ---
 st.markdown(f"**Why these crops? Factor scores for {latest}**")
@@ -493,9 +732,15 @@ fs = go.Figure()
 fs.add_bar(x=[str(y) for y in comp.index], y=comp.values,
            marker_color=bar_cols, name=pick)
 fs.add_hline(y=crop_model.GOOD_YEAR_SCORE, line_dash="dot",
-             line_color=GOLD,
+             line_color=GOLD, line_width=2,
              annotation_text="good-year threshold",
-             annotation_font_color=GOLD)
+             annotation_font_color=GOLD,
+             annotation_font_size=11,
+             annotation_position="top left",
+             annotation_bgcolor=BG,
+             annotation_bordercolor=GOLD,
+             annotation_borderwidth=1,
+             annotation_borderpad=3)
 style_chart(
     fs, height=340,
     yaxis=dict(title="Suitability score", range=[0, 105],
@@ -551,13 +796,13 @@ d1, d2 = st.columns(2)
 d1.download_button(
     "⬇ Indicators CSV",
     table.to_csv().encode("utf-8"),
-    file_name=f"CropMaxxing_indicators_{lat:.2f}_{lon:.2f}.csv",
+    file_name=f"croptime_indicators_{lat:.2f}_{lon:.2f}.csv",
     mime="text/csv", use_container_width=True,
 )
 d2.download_button(
     "⬇ Crop ranking CSV",
     ranking.to_csv(index=False).encode("utf-8"),
-    file_name=f"cropmaxxing_ranking_{lat:.2f}_{lon:.2f}.csv",
+    file_name=f"croptime_ranking_{lat:.2f}_{lon:.2f}.csv",
     mime="text/csv", use_container_width=True,
 )
 
@@ -574,7 +819,7 @@ st.markdown('## ℹ About — data, method and limitations')
 st.markdown(
     """
 
-**What it does.** CropMaxxing reads a satellite-derived climate record for one
+**What it does.** CropTime reads a satellite-derived climate record for one
 point, measures how the season actually behaved each year, and ranks crops by
 *reliability* — not just average yield. It then flags the current season if it
 is diverging from the norm.
@@ -632,3 +877,4 @@ can also enter soil values manually using the Custom option above.
 **Built for ASTRA 2026** · Domain 2: Earth Observation & Satellite Applications
         """
     )
+
